@@ -1,0 +1,161 @@
+package com.verizon.gctss.api.util;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.gctss.dao.DocumentDMS;
+import com.verizon.gctss.dao.E2EContractDAO;
+import com.verizon.gctss.dao.exception.E2EDaoException;
+import com.verizon.gctss.dao.model.CurrencyDTO;
+import com.verizon.gctss.messaging.util.InterfaceConstants;
+import com.verizon.gctss.model.PQCurrency;
+import com.verizon.gctss.model.PQRequest;
+import com.verizon.gctss.model.PQResponse;
+import com.verizon.gctss.model.SearchCriteria;
+import com.verizon.gctss.model.ZVLERequest;
+
+@Service
+public class PQLookupService {
+	
+private static final Logger logger = LoggerFactory.getLogger(PQLookupService.class);
+	
+	@Autowired
+	DocumentDMS dmsService;
+	
+	@Autowired
+	private E2EContractDAO e2EContractDAO;
+	
+	@Autowired
+	private final RestTemplate restTemplate;
+	
+	@Autowired
+	private LogIncomingOutgoingUtil logIncomingOutgoingUtil;
+
+	public PQLookupService(RestTemplate restTemplate) {
+		this.restTemplate = new RestTemplate();
+		
+	}
+	
+	
+	public PQCurrency getPQDataByVLEIDAndVLECountry(String vleId, String vleCountryCode, String amendmentId) {
+	{
+		PQResponse response=null;
+		 PQCurrency finalResponse = new PQCurrency();
+		String methodName = "PQLookupService.getPQDataByVLEIDAndVLECountry";
+		logger.info(methodName + " - Entering...");
+		PQRequest requestModel= new PQRequest();
+		try
+			{
+			
+				String url = dmsService.getPreferenceValue(EDMConstants.PQ_CURRENCY_URL);
+
+				String apikey=dmsService.getPreferenceValue(EDMConstants.PQ_CURRENCY_APIKEY);
+	
+			    HttpHeaders headers = new HttpHeaders();
+			    headers.set("apikey", apikey);
+			    
+			    headers.set("Content-Type", "application/json");
+
+			    // Setting vleCountryCode and vleId in the request
+			    ZVLERequest getZVLERequest = new ZVLERequest();
+			    getZVLERequest.setSourceSystem("QQ");
+
+			    SearchCriteria searchCriteria = new SearchCriteria();
+			    searchCriteria.setVleCountryCode(vleCountryCode);
+			    searchCriteria.setVleid(vleId);
+
+			    getZVLERequest.setSearchCriteria(searchCriteria);
+			    
+			    requestModel.setGetZVLERequest(getZVLERequest);
+
+			    HttpEntity<ZVLERequest> entity = new HttpEntity<>(getZVLERequest, headers);
+			    ResponseEntity<PQResponse> responseEntity = restTemplate.exchange(url, HttpMethod.POST, entity, PQResponse.class);
+			   
+				response=responseEntity.getBody();
+				
+				
+				if (response != null && response.getGetVZVLEResponse() != null) {
+		           
+		            PQResponse.VZVLEResponse vzvleResponse = response.getGetVZVLEResponse();
+
+		            // Set status and source system
+		            finalResponse.setStatus(vzvleResponse.getStatus());
+		            finalResponse.setSourceSystem(vzvleResponse.getSourceSystem());
+
+		            // Set legalEntity
+		            finalResponse.setLegalEntity(vzvleResponse.getResultSet().getLegalEntity());
+                    finalResponse.setCode("200");
+		            // Aggregate currencies
+		            List<String> currencyCodes = new ArrayList<>();
+		            
+		            
+		            addNonEmptyValues(currencyCodes, vzvleResponse.getResultSet().getLocalCurrency());
+		            addNonEmptyValues(currencyCodes, vzvleResponse.getResultSet().getAltCurrency1());
+		            addNonEmptyValues(currencyCodes, vzvleResponse.getResultSet().getAltCurrency2());
+		            addNonEmptyValues(currencyCodes, vzvleResponse.getResultSet().getAltCurrency3());
+		            addNonEmptyValues(currencyCodes, vzvleResponse.getResultSet().getAltCurrency4());
+		            addNonEmptyValues(currencyCodes, vzvleResponse.getResultSet().getAltCurrency5());
+
+		            List<CurrencyDTO> currencies= e2EContractDAO.findCurrenciesByCodes(currencyCodes);
+		            
+		            finalResponse.setCurrencies(currencies);
+
+		        }
+				
+				ObjectMapper objectMapper = new ObjectMapper();
+				String requestJson = objectMapper.writeValueAsString(requestModel);
+				long transID=new Long(System.currentTimeMillis());	
+				
+				
+				logIncomingOutgoingUtil.persistInComingGatewayLog(vleId, InterfaceConstants.PQ_GCT,requestJson,"GCT", String.valueOf(transID));
+				String responseJsonInString = objectMapper.writeValueAsString(response);
+				String apiStatus="Failed";
+				if(response!=null && response.getGetVZVLEResponse()!=null) {
+					
+					 apiStatus= response.getGetVZVLEResponse().getStatus();
+				}
+				logIncomingOutgoingUtil.persistOutGoingGatewayLog("", amendmentId,InterfaceConstants.PQ_GCT, responseJsonInString, "GCT", apiStatus,null, String.valueOf(transID));
+				
+				//return response.getBody();
+
+				//response = gchPort.getGCHProfiles(input); // this is the API to fetch the value for Tax Mandatory Check/Tax Registration Id/fully Approved taxId or not
+			}catch (RestClientException re)
+			{
+				finalResponse.setCode("500");
+				finalResponse.setErrorLink("https://atyourservice.verizon.com/ays?id=support&search=proquest");
+				finalResponse.setErrorDescription("There was an error trying to complete the request. Please raise an At Your Service(AYS) ticket for reference.");
+				logger.error("There was an error trying to complete the PQ request.");
+}catch (Exception re)
+			{
+				logger.error(" -Exception while calling PQ Service error Message - " + re.getMessage());
+			}
+		
+		logger.info(methodName + " - Exiting...");
+		return finalResponse;
+	}
+}
+	private void addNonEmptyValues(List<String> target, List<String> values) throws E2EDaoException {
+        if (values != null) {
+            for (String value : values) {
+                if (value != null && !value.isEmpty()) {
+                    target.add(value);
+                }
+            }
+        }
+    }
+
+}
+
