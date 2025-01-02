@@ -1,131 +1,221 @@
-package com.verizon.gctss.api.util;
+package com.verizon.gctss.model;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.List;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.RestTemplate;
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class PQResponse {
+    @JsonProperty("getVZVLEResponse")
+    private VZVLEResponse getVZVLEResponse;
 
-import com.verizon.gctss.dao.DocumentDMS;
-import com.verizon.gctss.dao.E2EContractDAO;
-import com.verizon.gctss.dao.model.CurrencyDTO;
-import com.verizon.gctss.model.PQCurrency;
-import com.verizon.gctss.model.PQResponse;
-import com.verizon.gctss.model.SearchCriteria;
-import com.verizon.gctss.model.ZVLERequest;
-import com.verizon.gctss.messaging.util.InterfaceConstants;
+    // Getters and setters
 
-class PQLookupServiceTest {
-
-    @InjectMocks
-    private PQLookupService pqLookupService;
-
-    @Mock
-    private DocumentDMS dmsService;
-
-    @Mock
-    private E2EContractDAO e2EContractDAO;
-
-    @Mock
-    private RestTemplate restTemplate;
-
-    @Mock
-    private LogIncomingOutgoingUtil logIncomingOutgoingUtil;
-
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
+    public VZVLEResponse getGetVZVLEResponse() {
+        return getVZVLEResponse;
     }
 
-    @Test
-    void testGetPQDataByVLEIDAndVLECountry_Success() throws Exception {
-        // Arrange
-        String vleId = "123";
-        String vleCountryCode = "US";
-        String amendmentId = "456";
-
-        String url = "http://mockedurl.com";
-        String apiKey = "mockedApiKey";
-
-        when(dmsService.getPreferenceValue(anyString()))
-                .thenReturn(url)  // First call for URL
-                .thenReturn(apiKey);  // Second call for API key
-
-        PQResponse.VZVLEResponse vzvleResponse = new PQResponse.VZVLEResponse();
-        vzvleResponse.setStatus("SUCCESS");
-        vzvleResponse.setSourceSystem("QQ");
-        vzvleResponse.setResultSet(new PQResponse.VZVLEResponse.ResultSet());
-        vzvleResponse.getResultSet().setLegalEntity("MockEntity");
-        vzvleResponse.getResultSet().setLocalCurrency(Collections.singletonList("USD"));
-
-        PQResponse response = new PQResponse();
-        response.setGetVZVLEResponse(vzvleResponse);
-
-        ResponseEntity<PQResponse> responseEntity = ResponseEntity.ok(response);
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(PQResponse.class)))
-                .thenReturn(responseEntity);
-
-        CurrencyDTO currencyDTO = new CurrencyDTO();
-        currencyDTO.setCode("USD");
-        currencyDTO.setName("US Dollar");
-        when(e2EContractDAO.findCurrenciesByCodes(anyList()))
-                .thenReturn(Collections.singletonList(currencyDTO));
-
-        // Act
-        PQCurrency result = pqLookupService.getPQDataByVLEIDAndVLECountry(vleId, vleCountryCode, amendmentId);
-
-        // Assert
-        assert result != null;
-        assert "SUCCESS".equals(result.getStatus());
-        assert "QQ".equals(result.getSourceSystem());
-        assert "MockEntity".equals(result.getLegalEntity());
-        assert result.getCurrencies() != null && !result.getCurrencies().isEmpty();
-        assert "200".equals(result.getCode());
-
-        verify(dmsService, times(2)).getPreferenceValue(anyString());
-        verify(restTemplate, times(1)).exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(PQResponse.class));
-        verify(e2EContractDAO, times(1)).findCurrenciesByCodes(anyList());
+    public void setGetVZVLEResponse(VZVLEResponse getVZVLEResponse) {
+        this.getVZVLEResponse = getVZVLEResponse;
     }
 
-    @Test
-    void testGetPQDataByVLEIDAndVLECountry_ErrorHandling() throws Exception {
-        // Arrange
-        String vleId = "123";
-        String vleCountryCode = "US";
-        String amendmentId = "456";
+    public static class VZVLEResponse {
+        @JsonProperty("SourceSystem")
+        private String sourceSystem;
 
-        String url = "http://mockedurl.com";
-        String apiKey = "mockedApiKey";
+        @JsonProperty("status")
+        private String status;
 
-        when(dmsService.getPreferenceValue(anyString()))
-                .thenReturn(url)  // First call for URL
-                .thenReturn(apiKey);  // Second call for API key
+        @JsonProperty("SearchCriteria")
+        private SearchCriteria searchCriteria;
 
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(PQResponse.class)))
-                .thenThrow(new RuntimeException("RestTemplate exception"));
+        @JsonProperty("ResultSet")
+        private ResultSet resultSet;
 
-        // Act
-        PQCurrency result = pqLookupService.getPQDataByVLEIDAndVLECountry(vleId, vleCountryCode, amendmentId);
+        // Getters and setters
 
-        // Assert
-        assert result != null;
-        assert "500".equals(result.getCode());
-        assert "https://atyourservice.verizon.com/ays?id=support&search=proquest".equals(result.getErrorLink());
-        assert result.getErrorDescription() != null;
+        public String getSourceSystem() {
+            return sourceSystem;
+        }
 
-        verify(dmsService, times(2)).getPreferenceValue(anyString());
-        verify(restTemplate, times(1)).exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(PQResponse.class));
+        public void setSourceSystem(String sourceSystem) {
+            this.sourceSystem = sourceSystem;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public SearchCriteria getSearchCriteria() {
+            return searchCriteria;
+        }
+
+        public void setSearchCriteria(SearchCriteria searchCriteria) {
+            this.searchCriteria = searchCriteria;
+        }
+
+        public ResultSet getResultSet() {
+            return resultSet;
+        }
+
+        public void setResultSet(ResultSet resultSet) {
+            this.resultSet = resultSet;
+        }
+    }
+
+    public static class SearchCriteria {
+        @JsonProperty("vleCountryCode")
+        private String vleCountryCode;
+
+        @JsonProperty("vleid")
+        private String vleid;
+
+        // Getters and setters
+
+        public String getVleCountryCode() {
+            return vleCountryCode;
+        }
+
+        public void setVleCountryCode(String vleCountryCode) {
+            this.vleCountryCode = vleCountryCode;
+        }
+
+        public String getVleid() {
+            return vleid;
+        }
+
+        public void setVleid(String vleid) {
+            this.vleid = vleid;
+        }
+    }
+
+    public static class ResultSet {
+        @JsonProperty("legalEntity")
+        private List<String> legalEntity;
+
+        @JsonProperty("sellFrom")
+        private List<String> sellFrom;
+
+        @JsonProperty("crsBorderRvwAllow")
+        private List<String> crsBorderRvwAllow;
+
+        @JsonProperty("RIBElig")
+        private List<String> ribElig;
+
+        @JsonProperty("loclocRest")
+        private List<String> loclocRest;
+
+        @JsonProperty("localCurrency")
+        private List<String> localCurrency;
+
+        @JsonProperty("altCurrency1")
+        private List<String> altCurrency1;
+
+        @JsonProperty("altCurrency2")
+        private List<String> altCurrency2;
+
+        @JsonProperty("altCurrency3")
+        private List<String> altCurrency3;
+
+        @JsonProperty("altCurrency4")
+        private List<String> altCurrency4;
+
+        @JsonProperty("altCurrency5")
+        private List<String> altCurrency5;
+
+        // Getters and setters
+
+        public List<String> getLegalEntity() {
+            return legalEntity;
+        }
+
+        public void setLegalEntity(List<String> legalEntity) {
+            this.legalEntity = legalEntity;
+        }
+
+        public List<String> getSellFrom() {
+            return sellFrom;
+        }
+
+        public void setSellFrom(List<String> sellFrom) {
+            this.sellFrom = sellFrom;
+        }
+
+        public List<String> getCrsBorderRvwAllow() {
+            return crsBorderRvwAllow;
+        }
+
+        public void setCrsBorderRvwAllow(List<String> crsBorderRvwAllow) {
+            this.crsBorderRvwAllow = crsBorderRvwAllow;
+        }
+
+        public List<String> getRibElig() {
+            return ribElig;
+        }
+
+        public void setRibElig(List<String> ribElig) {
+            this.ribElig = ribElig;
+        }
+
+        public List<String> getLoclocRest() {
+            return loclocRest;
+        }
+
+        public void setLoclocRest(List<String> loclocRest) {
+            this.loclocRest = loclocRest;
+        }
+
+        public List<String> getLocalCurrency() {
+            return localCurrency;
+        }
+
+        public void setLocalCurrency(List<String> localCurrency) {
+            this.localCurrency = localCurrency;
+        }
+
+        public List<String> getAltCurrency1() {
+            return altCurrency1;
+        }
+
+        public void setAltCurrency1(List<String> altCurrency1) {
+            this.altCurrency1 = altCurrency1;
+        }
+
+        public List<String> getAltCurrency2() {
+            return altCurrency2;
+        }
+
+        public void setAltCurrency2(List<String> altCurrency2) {
+            this.altCurrency2 = altCurrency2;
+        }
+
+        public List<String> getAltCurrency3() {
+            return altCurrency3;
+        }
+
+        public void setAltCurrency3(List<String> altCurrency3) {
+            this.altCurrency3 = altCurrency3;
+        }
+
+        public List<String> getAltCurrency4() {
+            return altCurrency4;
+        }
+
+        public void setAltCurrency4(List<String> altCurrency4) {
+            this.altCurrency4 = altCurrency4;
+        }
+
+        public List<String> getAltCurrency5() {
+            return altCurrency5;
+        }
+
+        public void setAltCurrency5(List<String> altCurrency5) {
+            this.altCurrency5 = altCurrency5;
+        }
     }
 }
