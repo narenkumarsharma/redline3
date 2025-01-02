@@ -1,155 +1,116 @@
 package com.verizon.gctss.api.util;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
+import static org.mockito.Mockito.*;
+
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.Date;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.exception.ExceptionUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.stereotype.Service;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.verizon.gctss.dao.E2EContractDAO;
-import com.verizon.gctss.dao.common.util.SecuritySolnUtil;
-import com.verizon.gctss.model.json.JSONObject;
 
-@SuppressWarnings({ "rawtypes", "unchecked" })
-@Service
-public class GctToGchContractUpdate {
+class GctToGchContractUpdateTest {
 
-	private static final Logger logger = LogManager.getLogger(GctToGchContractUpdate.class);
+    @InjectMocks
+    private GctToGchContractUpdate gctToGchContractUpdate;
 
-	@Lazy
-	@Autowired
-	private E2EContractDAO e2eContractDAO;
+    @Mock
+    private E2EContractDAO e2eContractDAO;
 
-	public void sendContractStatusUpdateJMSMessageToGCH(String legalDocId, boolean isReady4Q2C, boolean isPeUpload) {
-		String methodName = "sendContractStatusUpdateJMSMessageToGCH";
-		String gchResponse = null;
-		String statusCode = null;
-		CreateGCHUpdationRequest createGCHUpdationRequest = null;
-		try {
-			logger.info(methodName + "::legalDocId start :: " + legalDocId);
-			createGCHUpdationRequest = buildcreateGCHUpdationRequest(legalDocId, isReady4Q2C, isReady4Q2C);
-			ObjectMapper objectMapper = new ObjectMapper();
-			String requestJson = objectMapper.writeValueAsString(createGCHUpdationRequest);
-			logger.info(methodName + " Using rest service for GCHContractUpdatiob requestJson::" + requestJson);
-			gchResponse = postGCHContractUpdationRestMessage(requestJson, legalDocId,
-					new Long(System.currentTimeMillis()));
-			JSONObject jsonObject = new JSONObject(gchResponse.toString());
-			statusCode = jsonObject.get("statusCode").toString();
-			logger.info(methodName+"statusCode for response"+statusCode);
-		} catch (Exception e) {
-			logger.error(methodName + ExceptionUtils.getFullStackTrace(e));
-		}
-	}
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
 
-	public CreateGCHUpdationRequest buildcreateGCHUpdationRequest(String legalDocId, boolean isReady4Q2C,
-			boolean isPeUpload) {
-		String methodName = "sendGCHTaxValidation";
-		CreateGCHUpdationRequest gCHUpdationRequest = new CreateGCHUpdationRequest();
-		try {
-			if (null != legalDocId) {
-				gCHUpdationRequest.setSystem("SS");
-				gCHUpdationRequest.setTransId(new Long(System.currentTimeMillis()).toString());
-				gCHUpdationRequest.setTransTime((new Date()).toString());
-				gCHUpdationRequest.setLegalDocId(legalDocId);
-				gCHUpdationRequest.setPeUpload(isPeUpload);
-				gCHUpdationRequest.setReady4Q2C(isReady4Q2C);
-			}
+    @Test
+    void testBuildCreateGCHUpdationRequest() {
+        // Given
+        String legalDocId = "DOC123";
+        boolean isReady4Q2C = true;
+        boolean isPeUpload = false;
 
-		} catch (Exception e) {
-			logger.error(ExceptionUtils.getFullStackTrace(e));
-		}
-		logger.info(methodName + ", ends");
-		return gCHUpdationRequest;
+        // When
+        CreateGCHUpdationRequest request = gctToGchContractUpdate.buildcreateGCHUpdationRequest(legalDocId, isReady4Q2C, isPeUpload);
 
-	}
+        // Then
+        assert request != null;
+        assert "SS".equals(request.getSystem());
+        assert legalDocId.equals(request.getLegalDocId());
+        assert isReady4Q2C == request.isReady4Q2C();
+        assert isPeUpload == request.isPeUpload();
+    }
 
-	public String postGCHContractUpdationRestMessage(String requestJson, String legalDocId, long transID) {
+    @Test
+    void testSendContractStatusUpdateJMSMessageToGCH() {
+        // Given
+        String legalDocId = "DOC123";
+        boolean isReady4Q2C = true;
+        boolean isPeUpload = false;
 
-		URL url = null;
-		HttpURLConnection conn = null;
-		BufferedReader rd = null;
-		StringBuilder sb = new StringBuilder();
-		try {
+        when(e2eContractDAO.getPreferenceValue(anyString())).thenReturn("http://dummyurl.com");
 
-			String gchRestUrl = e2eContractDAO
-					.getPreferenceValue(com.verizon.gctss.dao.common.EDMConstants.GCH_CONTRACT_UPDATION_URL);
-			logger.info("GCT trying to connect GCH " + gchRestUrl);
-			url = new URL(gchRestUrl);
-			logger.info("Connected.");
-		} catch (MalformedURLException e) {
-			logger.error("Error: ", e);
-		}
-		try {
-			if (url != null) {
-				logger.info("GCH_JSON" + requestJson);
-				conn = (HttpURLConnection) url.openConnection();
-				logger.info("Step = 1");
-				conn.setRequestMethod("POST");
-				logger.info("Step = 2");
-				conn.setDoOutput(true);
-				logger.info("Step = 3");
-				conn.setDoInput(true);
-				logger.info("Step = 4");
-				String gchContentType = e2eContractDAO
-						.getPreferenceValue(com.verizon.gctss.dao.common.EDMConstants.GCH_CONTRACT_UPDATION_TYPE);
-				if (StringUtils.isBlank(gchContentType)) {
-					gchContentType = "application/json";
-				}
-				gchContentType = SecuritySolnUtil.sanitizeHeader(gchContentType);
-				conn.setRequestProperty("Content-Type", gchContentType);
-				logger.info("Content_Type-" + gchContentType);
-				logger.info("Step = 5");
-				conn.setRequestProperty("Accept", "application/json");
-				logger.info("Step = 6");
-				conn.setDoOutput(true);
-				logger.info("Step = 7 " + requestJson);
-				OutputStream os = conn.getOutputStream();
-				os.write(requestJson.getBytes());
-				logger.info("Step = 8");
-				os.flush();
-				logger.info("Step = 9");
-				os.close();
-				logger.info("Step = 10");
-				if (conn.getResponseCode() != 200) {
-					logger.info("Step = Some thing went wrong" + conn.getResponseMessage());
-					throw new IOException(conn.getResponseMessage());
-				}
-				rd = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-				String line;
+        // Mock the behavior of postGCHContractUpdationRestMessage
+        GctToGchContractUpdate spy = spy(gctToGchContractUpdate);
+        doReturn("{\"statusCode\":\"200\"}").when(spy).postGCHContractUpdationRestMessage(anyString(), anyString(), anyLong());
 
-				while ((line = rd.readLine()) != null) {
-					sb.append(line);
-				}
-				rd.close();
-				logger.info("Step = 11" + sb.toString());
-				logger.info("postGCHTAXVALRestMessage response = " + sb.toString());
-			}
-		} catch (IOException e) {
-			logger.error("Error: ", e);
-			logger.error("ERROR", e);
-		} finally {
-			try {
-				if (conn != null) {
-					conn.disconnect();
-				}
-			} catch (Exception e) {
-				logger.error("Error: ", e);
-			}
-		}
-		return sb.toString();
+        // When
+        spy.sendContractStatusUpdateJMSMessageToGCH(legalDocId, isReady4Q2C, isPeUpload);
 
-	}
+        // Then
+        verify(spy, times(1)).postGCHContractUpdationRestMessage(anyString(), eq(legalDocId), anyLong());
+    }
 
+    @Test
+    void testPostGCHContractUpdationRestMessage() throws Exception {
+        // Given
+        String requestJson = "{\"key\":\"value\"}";
+        String legalDocId = "DOC123";
+        long transID = 12345L;
+
+        String dummyUrl = "http://dummyurl.com";
+        when(e2eContractDAO.getPreferenceValue(anyString())).thenReturn(dummyUrl);
+
+        // Simulate HttpURLConnection
+        HttpURLConnection connection = mock(HttpURLConnection.class);
+        when(connection.getResponseCode()).thenReturn(200);
+        when(connection.getInputStream()).thenReturn(new java.io.ByteArrayInputStream("{\"statusCode\":\"200\"}".getBytes()));
+
+        GctToGchContractUpdate spy = spy(gctToGchContractUpdate);
+        doReturn(connection).when(spy).createHttpURLConnection(any());
+
+        // When
+        String response = spy.postGCHContractUpdationRestMessage(requestJson, legalDocId, transID);
+
+        // Then
+        assert response.contains("statusCode");
+        verify(e2eContractDAO, times(2)).getPreferenceValue(anyString());
+    }
+
+    @Test
+    void testPostGCHContractUpdationRestMessageWithError() throws Exception {
+        // Given
+        String requestJson = "{\"key\":\"value\"}";
+        String legalDocId = "DOC123";
+        long transID = 12345L;
+
+        String dummyUrl = "http://dummyurl.com";
+        when(e2eContractDAO.getPreferenceValue(anyString())).thenReturn(dummyUrl);
+
+        HttpURLConnection connection = mock(HttpURLConnection.class);
+        when(connection.getResponseCode()).thenReturn(500);
+        when(connection.getResponseMessage()).thenReturn("Internal Server Error");
+
+        GctToGchContractUpdate spy = spy(gctToGchContractUpdate);
+        doReturn(connection).when(spy).createHttpURLConnection(any());
+
+        // When
+        String response = spy.postGCHContractUpdationRestMessage(requestJson, legalDocId, transID);
+
+        // Then
+        assert response.isEmpty();
+        verify(e2eContractDAO, times(2)).getPreferenceValue(anyString());
+    }
 }
